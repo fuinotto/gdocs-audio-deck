@@ -65,8 +65,7 @@ The player interface is a floating, modern card pinned to the bottom-right of th
 The script is structured as a self-contained, immediately invoked function expression (IIFE).
 
 ### **Data Structure (The slots Object)**
-
-JavaScript  
+```JavaScript
 const slots \= {  
     A: {   
         id: null,               // Google Drive File ID  
@@ -77,6 +76,7 @@ const slots \= {
     },  
     B: { ... }  
 };
+```
 
 ### **Event Flow Diagram**
 
