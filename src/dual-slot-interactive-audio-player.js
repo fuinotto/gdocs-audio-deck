@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google Docs Dual-Slot Interactive Audio Player
 // @namespace    http://tampermonkey.net/
-// @version      6.2
+// @version      6.3
 // @description  Plays Drive links in Docs using two static slots, seek bars, shared loop, a custom fade controller, and automatic end-of-track reset. Now with collapsible UI.
 // @author       You
 // @match        https://docs.google.com/document/*
@@ -51,42 +51,6 @@
     container.style.userSelect = 'none';
     container.style.transition = 'all 0.3s ease';
 
-    // Collapsed icon button
-    const iconButton = document.createElement('button');
-    iconButton.style.position = 'fixed';
-    iconButton.style.bottom = '25px';
-    iconButton.style.right = '25px';
-    iconButton.style.zIndex = '999999';
-    iconButton.style.width = '50px';
-    iconButton.style.height = '50px';
-    iconButton.style.borderRadius = '50%';
-    iconButton.style.border = 'none';
-    iconButton.style.background = '#1a73e8';
-    iconButton.style.color = '#ffffff';
-    iconButton.style.fontSize = '24px';
-    iconButton.style.cursor = 'pointer';
-    iconButton.style.boxShadow = '0px 4px 12px rgba(26, 115, 232, 0.4)';
-    iconButton.style.display = 'none';
-    iconButton.style.alignItems = 'center';
-    iconButton.style.justifyContent = 'center';
-    iconButton.style.transition = 'all 0.2s ease';
-    iconButton.innerText = '♪';
-    iconButton.title = 'Click to expand audio player';
-
-    iconButton.addEventListener('mouseenter', () => {
-        iconButton.style.transform = 'scale(1.1)';
-        iconButton.style.boxShadow = '0px 6px 16px rgba(26, 115, 232, 0.6)';
-    });
-
-    iconButton.addEventListener('mouseleave', () => {
-        iconButton.style.transform = 'scale(1)';
-        iconButton.style.boxShadow = '0px 4px 12px rgba(26, 115, 232, 0.4)';
-    });
-
-    iconButton.addEventListener('click', toggleCollapse);
-
-    document.body.appendChild(iconButton);
-
     // Top Header / Settings Row
     const topRow = document.createElement('div');
     topRow.style.display = 'flex';
@@ -121,7 +85,7 @@
     collapseBtn.addEventListener('mouseleave', () => collapseBtn.style.background = '#f1f3f4');
     collapseBtn.addEventListener('click', toggleCollapse);
 
-    // Right-aligned settings container (Loop & Fade Settings)
+    // Right-aligned settings container (Loop & Fade Settings & Compact Controls)
     const settingsContainer = document.createElement('div');
     settingsContainer.style.display = 'flex';
     settingsContainer.style.alignItems = 'center';
@@ -183,6 +147,43 @@
     btnPlus.innerText = '+';
     styleStepperBtn(btnPlus);
 
+    // Compact Play/Pause button (only visible when collapsed)
+    const compactPlayBtn = document.createElement('button');
+    compactPlayBtn.style.border = '1px solid #dadce0';
+    compactPlayBtn.style.background = '#e8f0fe';
+    compactPlayBtn.style.borderRadius = '4px';
+    compactPlayBtn.style.width = '28px';
+    compactPlayBtn.style.height = '28px';
+    compactPlayBtn.style.display = 'none';
+    compactPlayBtn.style.alignItems = 'center';
+    compactPlayBtn.style.justifyContent = 'center';
+    compactPlayBtn.style.cursor = 'pointer';
+    compactPlayBtn.style.fontSize = '14px';
+    compactPlayBtn.style.fontWeight = 'bold';
+    compactPlayBtn.style.color = '#1a73e8';
+    compactPlayBtn.style.padding = '0';
+    compactPlayBtn.style.marginLeft = '8px';
+    compactPlayBtn.title = 'Play/Pause active track';
+    compactPlayBtn.innerText = '▶';
+    compactPlayBtn.addEventListener('mouseenter', () => compactPlayBtn.style.background = '#d2e3fc');
+    compactPlayBtn.addEventListener('mouseleave', () => {
+        if (!activeSlotKey || slots[activeSlotKey].audio.paused) {
+            compactPlayBtn.style.background = '#e8f0fe';
+        } else {
+            compactPlayBtn.style.background = '#1a73e8';
+        }
+    });
+    compactPlayBtn.addEventListener('click', () => {
+        if (!activeSlotKey) return;
+        const slot = slots[activeSlotKey];
+        if (slot.audio.paused) {
+            slot.audio.play();
+        } else {
+            slot.audio.pause();
+        }
+        refreshUI();
+    });
+
     // Style Helper for Stepper Buttons
     function styleStepperBtn(btn) {
         btn.style.border = '1px solid #dadce0';
@@ -227,6 +228,7 @@
 
     settingsContainer.appendChild(loopLabel);
     settingsContainer.appendChild(fadeWrapper);
+    settingsContainer.appendChild(compactPlayBtn);
     settingsContainer.appendChild(collapseBtn);
 
     topRow.appendChild(header);
@@ -338,31 +340,26 @@
     function toggleCollapse() {
         isCollapsed = !isCollapsed;
         if (isCollapsed) {
-            // Hide content, minimize panel
+            // Hide content & fade controls, show compact play button
             contentArea.style.display = 'none';
+            fadeWrapper.style.display = 'none';
+            loopLabel.style.display = 'none';
+            compactPlayBtn.style.display = 'flex';
             container.style.width = 'auto';
             container.style.padding = '12px';
             collapseBtn.innerText = '+';
             collapseBtn.title = 'Expand player';
-            container.style.display = 'flex';
-            iconButton.style.display = 'none';
         } else {
-            // Show content, restore panel
+            // Show content & fade controls, hide compact play button
             contentArea.style.display = 'flex';
+            fadeWrapper.style.display = 'flex';
+            loopLabel.style.display = 'flex';
+            compactPlayBtn.style.display = 'none';
             container.style.width = '400px';
             container.style.padding = '16px';
             collapseBtn.innerText = '−';
             collapseBtn.title = 'Minimize player';
-            container.style.display = 'flex';
-            iconButton.style.display = 'none';
         }
-    }
-
-    // Close container and show icon
-    function showIcon() {
-        container.style.display = 'none';
-        iconButton.style.display = 'flex';
-        isCollapsed = true;
     }
 
     // Refresh UI parameters (Time & Progress bars)
@@ -394,6 +391,20 @@
 
     // Handles slot coloring and button states
     function refreshUI() {
+        // Update compact play button state when collapsed
+        if (isCollapsed && activeSlotKey) {
+            const slot = slots[activeSlotKey];
+            if (slot.audio.paused) {
+                compactPlayBtn.innerText = '▶';
+                compactPlayBtn.style.background = '#e8f0fe';
+                compactPlayBtn.style.color = '#1a73e8';
+            } else {
+                compactPlayBtn.innerText = '⏸';
+                compactPlayBtn.style.background = '#1a73e8';
+                compactPlayBtn.style.color = '#ffffff';
+            }
+        }
+
         for (let key in slots) {
             const slot = slots[key];
             if (!slot.id) {
@@ -530,9 +541,13 @@
         const trackName = (target.innerText || "Google Drive Track").replace(/\n/g, ' ').trim();
         const streamUrl = `https://docs.google.com/uc?export=download&id=${fileId}`;
 
+        // Auto-expand if collapsed
+        if (isCollapsed) {
+            toggleCollapse();
+        }
+
+        // Ensure panel is visible
         container.style.display = 'flex';
-        iconButton.style.display = 'none';
-        isCollapsed = false;
 
         let targetKey = 'A';
 
