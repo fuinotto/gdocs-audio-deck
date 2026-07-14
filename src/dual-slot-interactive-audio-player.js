@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google Docs Dual-Slot Interactive Audio Player
 // @namespace    http://tampermonkey.net/
-// @version      6.1
-// @description  Plays Drive links in Docs using two static slots, seek bars, shared loop, a custom fade controller, and automatic end-of-track reset.
+// @version      6.2
+// @description  Plays Drive links in Docs using two static slots, seek bars, shared loop, a custom fade controller, and automatic end-of-track reset. Now with collapsible UI.
 // @author       You
 // @match        https://docs.google.com/document/*
 // @grant        none
@@ -18,6 +18,7 @@
     };
 
     let activeSlotKey = null; // Current active slot key ('A' or 'B')
+    let isCollapsed = false;  // Track collapsed state
 
     // Configure Audio defaults & event listeners
     for (let key in slots) {
@@ -48,6 +49,43 @@
     container.style.width = '400px';
     container.style.fontFamily = '"Google Sans", Roboto, Arial, sans-serif';
     container.style.userSelect = 'none';
+    container.style.transition = 'all 0.3s ease';
+
+    // Collapsed icon button
+    const iconButton = document.createElement('button');
+    iconButton.style.position = 'fixed';
+    iconButton.style.bottom = '25px';
+    iconButton.style.right = '25px';
+    iconButton.style.zIndex = '999999';
+    iconButton.style.width = '50px';
+    iconButton.style.height = '50px';
+    iconButton.style.borderRadius = '50%';
+    iconButton.style.border = 'none';
+    iconButton.style.background = '#1a73e8';
+    iconButton.style.color = '#ffffff';
+    iconButton.style.fontSize = '24px';
+    iconButton.style.cursor = 'pointer';
+    iconButton.style.boxShadow = '0px 4px 12px rgba(26, 115, 232, 0.4)';
+    iconButton.style.display = 'none';
+    iconButton.style.alignItems = 'center';
+    iconButton.style.justifyContent = 'center';
+    iconButton.style.transition = 'all 0.2s ease';
+    iconButton.innerText = '♪';
+    iconButton.title = 'Click to expand audio player';
+
+    iconButton.addEventListener('mouseenter', () => {
+        iconButton.style.transform = 'scale(1.1)';
+        iconButton.style.boxShadow = '0px 6px 16px rgba(26, 115, 232, 0.6)';
+    });
+
+    iconButton.addEventListener('mouseleave', () => {
+        iconButton.style.transform = 'scale(1)';
+        iconButton.style.boxShadow = '0px 4px 12px rgba(26, 115, 232, 0.4)';
+    });
+
+    iconButton.addEventListener('click', toggleCollapse);
+
+    document.body.appendChild(iconButton);
 
     // Top Header / Settings Row
     const topRow = document.createElement('div');
@@ -61,6 +99,27 @@
     header.style.color = '#5f6368';
     header.style.textTransform = 'uppercase';
     header.innerText = "Audio Controller";
+
+    // Collapse button (to minimize panel)
+    const collapseBtn = document.createElement('button');
+    collapseBtn.innerText = '−';
+    collapseBtn.style.border = '1px solid #dadce0';
+    collapseBtn.style.background = '#f1f3f4';
+    collapseBtn.style.borderRadius = '4px';
+    collapseBtn.style.width = '24px';
+    collapseBtn.style.height = '24px';
+    collapseBtn.style.display = 'flex';
+    collapseBtn.style.alignItems = 'center';
+    collapseBtn.style.justifyContent = 'center';
+    collapseBtn.style.cursor = 'pointer';
+    collapseBtn.style.fontSize = '14px';
+    collapseBtn.style.fontWeight = 'bold';
+    collapseBtn.style.color = '#5f6368';
+    collapseBtn.style.padding = '0';
+    collapseBtn.title = 'Minimize player';
+    collapseBtn.addEventListener('mouseenter', () => collapseBtn.style.background = '#e8eaed');
+    collapseBtn.addEventListener('mouseleave', () => collapseBtn.style.background = '#f1f3f4');
+    collapseBtn.addEventListener('click', toggleCollapse);
 
     // Right-aligned settings container (Loop & Fade Settings)
     const settingsContainer = document.createElement('div');
@@ -168,10 +227,17 @@
 
     settingsContainer.appendChild(loopLabel);
     settingsContainer.appendChild(fadeWrapper);
+    settingsContainer.appendChild(collapseBtn);
 
     topRow.appendChild(header);
     topRow.appendChild(settingsContainer);
     container.appendChild(topRow);
+
+    // Content area that will be hidden when collapsed
+    const contentArea = document.createElement('div');
+    contentArea.style.display = 'flex';
+    contentArea.style.flexDirection = 'column';
+    contentArea.style.gap = '12px';
 
     // Slot UI Card Generator
     function createSlotUI(key) {
@@ -263,9 +329,41 @@
 
     slots.A.ui = createSlotUI('A');
     slots.B.ui = createSlotUI('B');
-    container.appendChild(slots.A.ui.card);
-    container.appendChild(slots.B.ui.card);
+    contentArea.appendChild(slots.A.ui.card);
+    contentArea.appendChild(slots.B.ui.card);
+    container.appendChild(contentArea);
     document.body.appendChild(container);
+
+    // Toggle collapse function
+    function toggleCollapse() {
+        isCollapsed = !isCollapsed;
+        if (isCollapsed) {
+            // Hide content, minimize panel
+            contentArea.style.display = 'none';
+            container.style.width = 'auto';
+            container.style.padding = '12px';
+            collapseBtn.innerText = '+';
+            collapseBtn.title = 'Expand player';
+            container.style.display = 'flex';
+            iconButton.style.display = 'none';
+        } else {
+            // Show content, restore panel
+            contentArea.style.display = 'flex';
+            container.style.width = '400px';
+            container.style.padding = '16px';
+            collapseBtn.innerText = '−';
+            collapseBtn.title = 'Minimize player';
+            container.style.display = 'flex';
+            iconButton.style.display = 'none';
+        }
+    }
+
+    // Close container and show icon
+    function showIcon() {
+        container.style.display = 'none';
+        iconButton.style.display = 'flex';
+        isCollapsed = true;
+    }
 
     // Refresh UI parameters (Time & Progress bars)
     setInterval(() => {
@@ -433,6 +531,8 @@
         const streamUrl = `https://docs.google.com/uc?export=download&id=${fileId}`;
 
         container.style.display = 'flex';
+        iconButton.style.display = 'none';
+        isCollapsed = false;
 
         let targetKey = 'A';
 
