@@ -152,8 +152,8 @@
     compactPlayBtn.style.border = '1px solid #dadce0';
     compactPlayBtn.style.background = '#e8f0fe';
     compactPlayBtn.style.borderRadius = '4px';
-    compactPlayBtn.style.width = '28px';
-    compactPlayBtn.style.height = '28px';
+    compactPlayBtn.style.width = '24px';
+    compactPlayBtn.style.height = '24px';
     compactPlayBtn.style.display = 'none';
     compactPlayBtn.style.alignItems = 'center';
     compactPlayBtn.style.justifyContent = 'center';
@@ -162,7 +162,6 @@
     compactPlayBtn.style.fontWeight = 'bold';
     compactPlayBtn.style.color = '#1a73e8';
     compactPlayBtn.style.padding = '0';
-    compactPlayBtn.style.marginLeft = '8px';
     compactPlayBtn.title = 'Play/Pause active track';
     compactPlayBtn.innerText = '▶';
     compactPlayBtn.addEventListener('mouseenter', () => compactPlayBtn.style.background = '#d2e3fc');
@@ -240,6 +239,7 @@
     contentArea.style.display = 'flex';
     contentArea.style.flexDirection = 'column';
     contentArea.style.gap = '12px';
+    //contentArea.style.marginLeft = '12px';
 
     // Slot UI Card Generator
     function createSlotUI(key) {
@@ -349,6 +349,8 @@
             container.style.padding = '12px';
             collapseBtn.innerText = '+';
             collapseBtn.title = 'Expand player';
+            header.originalInnerText = header.innerText;
+            header.innerText = '';
         } else {
             // Show content & fade controls, hide compact play button
             contentArea.style.display = 'flex';
@@ -359,6 +361,7 @@
             container.style.padding = '16px';
             collapseBtn.innerText = '−';
             collapseBtn.title = 'Minimize player';
+            header.innerText = header.originalInnerText ?? header.innerText;
         }
     }
 
@@ -392,7 +395,7 @@
     // Handles slot coloring and button states
     function refreshUI() {
         // Update compact play button state when collapsed
-        if (isCollapsed && activeSlotKey) {
+        if (activeSlotKey) {
             const slot = slots[activeSlotKey];
             if (slot.audio.paused) {
                 compactPlayBtn.innerText = '▶';
