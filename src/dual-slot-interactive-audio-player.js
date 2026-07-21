@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google Docs Dual-Slot Interactive Audio Player
 // @namespace    http://tampermonkey.net/
-// @version      6.3
+// @version      0.6.3
 // @description  Plays Drive links in Docs using two static slots, seek bars, shared loop, a custom fade controller, and automatic end-of-track reset. Now with collapsible UI.
 // @author       You
 // @match        https://docs.google.com/document/*
@@ -10,6 +10,8 @@
 
 (function() {
     'use strict';
+
+    const version = '0.6.3'
 
     // Core Slot Objects
     const slots = {
