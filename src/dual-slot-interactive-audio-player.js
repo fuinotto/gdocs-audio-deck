@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google Docs Dual-Slot Interactive Audio Player
 // @namespace    http://tampermonkey.net/
-// @version      7.0
-// @description  Plays Drive links in Docs using two static slots with crossfade, an independent Ambience looping slot, a 9-button SFX pad, and a collapsible UI.
+// @version      7.1
+// @description  Plays Drive links in Docs using two static slots with crossfade, an independent Ambience looping slot, a 9-button SFX pad (with name-based auto-routing and stop control), and a collapsible UI.
 // @author       You
 // @match        https://docs.google.com/document/*
 // @grant        none
@@ -589,7 +589,42 @@
 
     sfxVolWrapper.appendChild(sfxVolLabel);
     sfxVolWrapper.appendChild(sfxVolSlider);
-    sfxHeaderRow.appendChild(sfxPadLabel);
+
+    // Stop SFX button
+    const sfxStopBtn = document.createElement('button');
+    sfxStopBtn.innerText = '■';
+    sfxStopBtn.title = 'Stop SFX';
+    sfxStopBtn.style.border = '1px solid #dadce0';
+    sfxStopBtn.style.background = '#f1f3f4';
+    sfxStopBtn.style.borderRadius = '4px';
+    sfxStopBtn.style.width = '20px';
+    sfxStopBtn.style.height = '20px';
+    sfxStopBtn.style.display = 'flex';
+    sfxStopBtn.style.alignItems = 'center';
+    sfxStopBtn.style.justifyContent = 'center';
+    sfxStopBtn.style.cursor = 'pointer';
+    sfxStopBtn.style.fontSize = '9px';
+    sfxStopBtn.style.fontWeight = 'bold';
+    sfxStopBtn.style.color = '#ea4335';
+    sfxStopBtn.style.padding = '0';
+    sfxStopBtn.addEventListener('mouseenter', () => sfxStopBtn.style.background = '#fce8e6');
+    sfxStopBtn.addEventListener('mouseleave', () => sfxStopBtn.style.background = '#f1f3f4');
+    sfxStopBtn.addEventListener('click', () => {
+        sfxAudio.pause();
+        sfxAudio.currentTime = 0;
+        if (playingPadIndex !== null) {
+            applyPadStyle(playingPadIndex);
+            playingPadIndex = null;
+        }
+    });
+
+    const sfxLabelGroup = document.createElement('div');
+    sfxLabelGroup.style.display = 'flex';
+    sfxLabelGroup.style.alignItems = 'center';
+    sfxLabelGroup.style.gap = '6px';
+    sfxLabelGroup.appendChild(sfxPadLabel);
+    sfxLabelGroup.appendChild(sfxStopBtn);
+    sfxHeaderRow.appendChild(sfxLabelGroup);
     sfxHeaderRow.appendChild(sfxVolWrapper);
 
     // Flash target for Ctrl+click with no armed pad
@@ -1016,6 +1051,27 @@
                 setTimeout(() => { sfxPadLabel.style.color = '#5f6368'; }, 500);
                 if (!isSfxSectionExpanded) toggleSfxSection();
             }
+            return;
+        }
+
+        // ── Name-based SFX auto-route (name starts with "sfx" or "[sfx]") ────
+        if (/^(\[sfx\]|sfx)/i.test(trackName)) {
+            const targetPadIdx = armedPadIndex !== null
+                ? armedPadIndex
+                : sfxPad.findIndex(p => p.id === null);
+            if (targetPadIdx !== -1) {
+                sfxPad[targetPadIdx].id = fileId;
+                sfxPad[targetPadIdx].label = trackName.length > 14 ? trackName.slice(0, 13) + '…' : trackName;
+                const prevArmed = armedPadIndex;
+                armedPadIndex = null;
+                applyPadStyle(targetPadIdx);
+                if (prevArmed !== null && prevArmed !== targetPadIdx) applyPadStyle(prevArmed);
+            } else {
+                // All pads full — flash SFX pad header
+                sfxPadLabel.style.color = '#ea4335';
+                setTimeout(() => { sfxPadLabel.style.color = '#5f6368'; }, 500);
+            }
+            if (!isSfxSectionExpanded) toggleSfxSection();
             return;
         }
 

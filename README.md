@@ -13,7 +13,7 @@ Tampermonkey userscript that plays Google Drive audio files in Google Docs via a
 - **Collapsible UI** — Minimize to a compact header bar when not needed
 - **Auto end-of-track reset** — Playhead resets and button returns to ▶ PLAY when a non-looping track ends
 - **Ambience slot** — Independent looping audio layer with its own volume slider; load via Alt+click on any Drive link
-- **SFX Pad** — 3×3 grid of 9 one-shot buttons; pre-fill Drive File IDs in `SFX_PAD_CONFIG` or assign at runtime via Ctrl+click
+- **SFX Pad** — 3×3 grid of 9 one-shot buttons; pre-fill Drive File IDs in `SFX_PAD_CONFIG` or assign at runtime via Ctrl+click. Links whose names start with `sfx` or `[sfx]` auto-route to the pad on plain click. A `■` stop button halts any playing SFX instantly.
 
 ## Installation
 

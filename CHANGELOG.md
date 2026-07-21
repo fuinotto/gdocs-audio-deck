@@ -8,7 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [7.0] — 2026-07-21 — Current
+## [7.1] — 2026-07-21 — Current
+
+### Added
+- **SFX name-based auto-routing** — Clicking a Drive link whose text starts with `sfx` or `[sfx]` (case-insensitive, no modifier key needed) automatically assigns it to the next empty SFX pad (or the currently armed pad). Expands the Ambience & SFX section if collapsed. If all pads are full, flashes the SFX pad header in red.
+- **SFX Stop button** — A `■` button in the SFX pad header row immediately stops any playing SFX and resets the playing-pad highlight.
+
+---
+
+## [7.0] — 2026-07-21
 
 ### Added
 - **Ambience slot** — Dedicated looping audio slot independent of A/B; always `loop = true`; has its own play/pause button, scrub bar, time display, and volume slider (default 0.7). Load via **Alt+click** on a Drive link in the doc.

@@ -40,7 +40,7 @@ The script maintains two static audio tracks: **Slot A** and **Slot B**.
 
   | Modifier | Target |
   | :--- | :--- |
-  | *(none)* | A/B slot selection — unchanged |
+  | *(none)* | A/B slot selection — unchanged (unless name-based SFX routing triggers; see Section 2F) |
   | **Alt** | Ambience slot |
   | **Ctrl** | Armed SFX pad (if any); otherwise brief flash on SFX pad label |
 
@@ -73,6 +73,8 @@ When the user triggers a track in the inactive slot while the active slot is pla
 - `sfxAudio.volume` is controlled by the SFX volume slider (default 0.8).
 - **Pre-fill:** set `id` fields in `SFX_PAD_CONFIG` (top of IIFE) to load pads at script startup without any click.
 - **Runtime assign:** click an empty pad to arm it → **Ctrl+click** a Drive link → pad receives the File ID. Clicking the armed pad again disarms it; clicking a different pad re-arms it.
+- **Name-based auto-routing:** if a clicked Drive link's text begins with `sfx` or `[sfx]` (case-insensitive, no modifier required), it is automatically assigned to the next empty pad (or the armed pad if any). If all pads are full, the SFX pad header flashes red.
+- **Stop button (`■`)** in the SFX panel header row: immediately stops the playing SFX (`sfxAudio.pause(); sfxAudio.currentTime = 0`), clears `playingPadIndex`, and reverts the playing-pad button style.
 - No scrub bar — SFX are fire-and-forget.
 
 ---
