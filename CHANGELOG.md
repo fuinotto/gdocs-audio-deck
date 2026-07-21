@@ -8,7 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [6.3] — 2026-07-14 — Current
+## [7.0] — 2026-07-21 — Current
+
+### Added
+- **Ambience slot** — Dedicated looping audio slot independent of A/B; always `loop = true`; has its own play/pause button, scrub bar, time display, and volume slider (default 0.7). Load via **Alt+click** on a Drive link in the doc.
+- **SFX Pad** — 3×3 grid of 9 one-shot buttons; single shared `<audio>` element (only one SFX plays at a time); independent volume slider (default 0.8). Pads can be pre-filled via `SFX_PAD_CONFIG` in the script header or assigned at runtime via **Ctrl+click** after arming a pad button.
+- **Armed pad assignment** — Click an empty pad to arm it (blue dashed border); then Ctrl+click a Drive link to assign that file to the pad. Clicking the armed pad again disarms it; clicking a different pad re-arms it.
+- **`buildStreamUrl(fileId)` helper** — Extracted shared helper; replaces the previously inlined stream URL string in the click handler.
+- **Ambience & SFX expandable section** — Appended below the A/B slot cards; has its own independent `▾`/`▸` collapse toggle. Not hidden by the main `−`/`+` panel collapse.
+- **Modifier-key routing in link click handler** — `Alt+click` → Ambience slot; `Ctrl+click` → armed SFX pad (or orange flash on SFX pad header if no pad is armed); no modifier → existing A/B logic (unchanged).
+
+### Changed
+- `@description` updated to mention Ambience and SFX pad.
+- `setInterval` UI refresh loop now also updates the Ambience scrub bar and time display.
+
+---
+
+## [6.3] — 2026-07-14
 
 ### Fixed
 - Compact play button now correctly shows `▶` when paused and `⏸` when playing (was always showing `▶`)

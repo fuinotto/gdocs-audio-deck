@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google Docs Dual-Slot Interactive Audio Player
 // @namespace    http://tampermonkey.net/
-// @version      6.3
-// @description  Plays Drive links in Docs using two static slots, seek bars, shared loop, a custom fade controller, and automatic end-of-track reset. Now with collapsible UI.
+// @version      7.0
+// @description  Plays Drive links in Docs using two static slots with crossfade, an independent Ambience looping slot, a 9-button SFX pad, and a collapsible UI.
 // @author       You
 // @match        https://docs.google.com/document/*
 // @grant        none
@@ -20,6 +20,37 @@
     let activeSlotKey = null; // Current active slot key ('A' or 'B')
     let isCollapsed = false;  // Track collapsed state
 
+    // ── SFX & Ambience: user-editable config ─────────────────────────────
+    // Replace any id: null with a Google Drive File ID string to pre-fill that pad.
+    const SFX_PAD_CONFIG = [
+        { id: null, label: "SFX 1" },
+        { id: null, label: "SFX 2" },
+        { id: null, label: "SFX 3" },
+        { id: null, label: "SFX 4" },
+        { id: null, label: "SFX 5" },
+        { id: null, label: "SFX 6" },
+        { id: null, label: "SFX 7" },
+        { id: null, label: "SFX 8" },
+        { id: null, label: "SFX 9" },
+    ];
+
+    // Ambience slot — same shape as A/B slots; always loops; volume independent
+    const ambienceSlot = {
+        id: null,
+        name: "No Ambience",
+        audio: document.createElement('audio'),
+        isUserDragging: false,
+        ui: null
+    };
+
+    // SFX layer — single shared <audio>; only one SFX plays at a time
+    const sfxAudio = document.createElement('audio');
+    const sfxPad = SFX_PAD_CONFIG.map(cfg => ({ id: cfg.id, label: cfg.label, btn: null }));
+
+    let armedPadIndex = null;       // Pad button index waiting to receive a Drive link
+    let playingPadIndex = null;     // Pad index currently playing (for ended-style revert)
+    let isSfxSectionExpanded = true; // Whether the Ambience & SFX section is visible
+
     // Configure Audio defaults & event listeners
     for (let key in slots) {
         slots[key].audio.loop = true;
@@ -31,6 +62,22 @@
             refreshUI();                      // Redraw UI to show "PLAY" state
         });
     }
+
+    // Ambience audio setup — always looping, volume independent of A/B
+    ambienceSlot.audio.loop = true;
+    document.body.appendChild(ambienceSlot.audio);
+
+    // SFX audio setup — single shared element, never loops
+    sfxAudio.loop = false;
+    document.body.appendChild(sfxAudio);
+
+    // Revert "playing" style on pad button when SFX finishes
+    sfxAudio.addEventListener('ended', () => {
+        if (playingPadIndex !== null && sfxPad[playingPadIndex].btn) {
+            applyPadStyle(playingPadIndex);
+        }
+        playingPadIndex = null;
+    });
 
     // Main UI Panel
     const container = document.createElement('div');
@@ -334,6 +381,254 @@
     contentArea.appendChild(slots.A.ui.card);
     contentArea.appendChild(slots.B.ui.card);
     container.appendChild(contentArea);
+
+    // ── AMBIENCE & SFX expandable section ──────────────────────────────────
+    const expandableSection = document.createElement('div');
+    expandableSection.style.display = 'flex';
+    expandableSection.style.flexDirection = 'column';
+    expandableSection.style.gap = '8px';
+
+    // Section toggle bar
+    const sectionToggleBar = document.createElement('div');
+    sectionToggleBar.style.display = 'flex';
+    sectionToggleBar.style.justifyContent = 'space-between';
+    sectionToggleBar.style.alignItems = 'center';
+    sectionToggleBar.style.cursor = 'pointer';
+    sectionToggleBar.addEventListener('click', toggleSfxSection);
+
+    const sectionLabel = document.createElement('div');
+    sectionLabel.style.fontSize = '11px';
+    sectionLabel.style.fontWeight = 'bold';
+    sectionLabel.style.color = '#5f6368';
+    sectionLabel.style.textTransform = 'uppercase';
+    sectionLabel.style.letterSpacing = '0.3px';
+    sectionLabel.innerText = '▾ Ambience & SFX';
+
+    const sfxChevronBtn = document.createElement('button');
+    styleStepperBtn(sfxChevronBtn);
+    sfxChevronBtn.innerText = '−';
+    sfxChevronBtn.title = 'Collapse Ambience & SFX';
+
+    sectionToggleBar.appendChild(sectionLabel);
+    sectionToggleBar.appendChild(sfxChevronBtn);
+
+    // Section content (collapsible)
+    const sectionContent = document.createElement('div');
+    sectionContent.style.display = 'flex';
+    sectionContent.style.flexDirection = 'column';
+    sectionContent.style.gap = '12px';
+
+    // ── Ambience card ──
+    const ambienceCard = document.createElement('div');
+    ambienceCard.style.borderRadius = '8px';
+    ambienceCard.style.padding = '10px 12px';
+    ambienceCard.style.display = 'flex';
+    ambienceCard.style.flexDirection = 'column';
+    ambienceCard.style.gap = '6px';
+    ambienceCard.style.border = '1px dashed #dadce0';
+    ambienceCard.style.background = '#fafafa';
+    ambienceCard.style.transition = 'all 0.25s ease';
+
+    const ambienceHeaderRow = document.createElement('div');
+    ambienceHeaderRow.style.display = 'flex';
+    ambienceHeaderRow.style.justifyContent = 'space-between';
+    ambienceHeaderRow.style.alignItems = 'center';
+
+    const ambienceTag = document.createElement('div');
+    ambienceTag.style.fontSize = '10px';
+    ambienceTag.style.fontWeight = 'bold';
+    ambienceTag.style.color = '#70757a';
+    ambienceTag.innerText = 'AMBIENCE';
+
+    const ambienceVolWrapper = document.createElement('div');
+    ambienceVolWrapper.style.display = 'flex';
+    ambienceVolWrapper.style.alignItems = 'center';
+    ambienceVolWrapper.style.gap = '4px';
+    ambienceVolWrapper.style.fontSize = '10px';
+    ambienceVolWrapper.style.color = '#5f6368';
+
+    const ambienceVolLabel = document.createElement('span');
+    ambienceVolLabel.innerText = 'Vol:';
+
+    const ambienceVolSlider = document.createElement('input');
+    ambienceVolSlider.type = 'range';
+    ambienceVolSlider.min = '0';
+    ambienceVolSlider.max = '1';
+    ambienceVolSlider.step = '0.05';
+    ambienceVolSlider.value = '0.7';
+    ambienceVolSlider.style.width = '70px';
+    ambienceVolSlider.style.cursor = 'pointer';
+    ambienceVolSlider.style.height = '4px';
+    ambienceVolSlider.style.accentColor = '#34a853';
+    ambienceVolSlider.addEventListener('input', () => {
+        ambienceSlot.audio.volume = parseFloat(ambienceVolSlider.value);
+    });
+    ambienceSlot.audio.volume = 0.7;
+
+    ambienceVolWrapper.appendChild(ambienceVolLabel);
+    ambienceVolWrapper.appendChild(ambienceVolSlider);
+    ambienceHeaderRow.appendChild(ambienceTag);
+    ambienceHeaderRow.appendChild(ambienceVolWrapper);
+
+    const ambienceNameEl = document.createElement('div');
+    ambienceNameEl.style.fontSize = '13px';
+    ambienceNameEl.style.fontWeight = '500';
+    ambienceNameEl.style.whiteSpace = 'nowrap';
+    ambienceNameEl.style.overflow = 'hidden';
+    ambienceNameEl.style.textOverflow = 'ellipsis';
+    ambienceNameEl.style.color = '#70757a';
+    ambienceNameEl.innerText = 'No Ambience';
+
+    const ambienceControlRow = document.createElement('div');
+    ambienceControlRow.style.display = 'flex';
+    ambienceControlRow.style.alignItems = 'center';
+    ambienceControlRow.style.justifyContent = 'space-between';
+    ambienceControlRow.style.gap = '10px';
+
+    const ambienceBtn = document.createElement('button');
+    ambienceBtn.style.border = 'none';
+    ambienceBtn.style.borderRadius = '6px';
+    ambienceBtn.style.padding = '5px 10px';
+    ambienceBtn.style.fontSize = '11px';
+    ambienceBtn.style.fontWeight = 'bold';
+    ambienceBtn.style.cursor = 'pointer';
+    ambienceBtn.style.flexShrink = '0';
+    ambienceBtn.style.background = '#f1f3f4';
+    ambienceBtn.style.color = '#70757a';
+    ambienceBtn.innerText = 'EMPTY';
+    ambienceBtn.addEventListener('click', handleAmbienceClick);
+
+    const ambienceSlider = document.createElement('input');
+    ambienceSlider.type = 'range';
+    ambienceSlider.min = '0';
+    ambienceSlider.max = '100';
+    ambienceSlider.value = '0';
+    ambienceSlider.style.flexGrow = '1';
+    ambienceSlider.style.cursor = 'pointer';
+    ambienceSlider.style.height = '4px';
+    ambienceSlider.style.accentColor = '#34a853';
+    ambienceSlider.addEventListener('mousedown', () => { ambienceSlot.isUserDragging = true; });
+    ambienceSlider.addEventListener('touchstart', () => { ambienceSlot.isUserDragging = true; });
+    ambienceSlider.addEventListener('change', () => {
+        if (ambienceSlot.audio.duration) {
+            ambienceSlot.audio.currentTime = (ambienceSlider.value / 100) * ambienceSlot.audio.duration;
+        }
+        ambienceSlot.isUserDragging = false;
+    });
+    ambienceSlider.addEventListener('input', () => {
+        if (ambienceSlot.audio.duration) {
+            const t = (ambienceSlider.value / 100) * ambienceSlot.audio.duration;
+            ambienceTimeEl.innerText = `${formatTime(t)}/${formatTime(ambienceSlot.audio.duration)}`;
+        }
+    });
+
+    const ambienceTimeEl = document.createElement('div');
+    ambienceTimeEl.style.fontSize = '11px';
+    ambienceTimeEl.style.color = '#70757a';
+    ambienceTimeEl.style.fontFamily = 'monospace';
+    ambienceTimeEl.style.flexShrink = '0';
+    ambienceTimeEl.innerText = '0:00/0:00';
+
+    ambienceControlRow.appendChild(ambienceBtn);
+    ambienceControlRow.appendChild(ambienceSlider);
+    ambienceControlRow.appendChild(ambienceTimeEl);
+
+    ambienceCard.appendChild(ambienceHeaderRow);
+    ambienceCard.appendChild(ambienceNameEl);
+    ambienceCard.appendChild(ambienceControlRow);
+
+    // Store refs
+    ambienceSlot.ui = { card: ambienceCard, tag: ambienceTag, nameEl: ambienceNameEl, btn: ambienceBtn, slider: ambienceSlider, timeEl: ambienceTimeEl };
+
+    // ── Divider ──
+    const sfxDivider = document.createElement('div');
+    sfxDivider.style.borderTop = '1px solid #e0e0e0';
+
+    // ── SFX Panel ──
+    const sfxPanel = document.createElement('div');
+    sfxPanel.style.display = 'flex';
+    sfxPanel.style.flexDirection = 'column';
+    sfxPanel.style.gap = '8px';
+
+    const sfxHeaderRow = document.createElement('div');
+    sfxHeaderRow.style.display = 'flex';
+    sfxHeaderRow.style.justifyContent = 'space-between';
+    sfxHeaderRow.style.alignItems = 'center';
+
+    const sfxPadLabel = document.createElement('div');
+    sfxPadLabel.style.fontSize = '10px';
+    sfxPadLabel.style.fontWeight = 'bold';
+    sfxPadLabel.style.color = '#5f6368';
+    sfxPadLabel.style.textTransform = 'uppercase';
+    sfxPadLabel.innerText = 'SFX Pad';
+
+    const sfxVolWrapper = document.createElement('div');
+    sfxVolWrapper.style.display = 'flex';
+    sfxVolWrapper.style.alignItems = 'center';
+    sfxVolWrapper.style.gap = '4px';
+    sfxVolWrapper.style.fontSize = '10px';
+    sfxVolWrapper.style.color = '#5f6368';
+
+    const sfxVolLabel = document.createElement('span');
+    sfxVolLabel.innerText = 'Vol:';
+
+    const sfxVolSlider = document.createElement('input');
+    sfxVolSlider.type = 'range';
+    sfxVolSlider.min = '0';
+    sfxVolSlider.max = '1';
+    sfxVolSlider.step = '0.05';
+    sfxVolSlider.value = '0.8';
+    sfxVolSlider.style.width = '70px';
+    sfxVolSlider.style.cursor = 'pointer';
+    sfxVolSlider.style.height = '4px';
+    sfxVolSlider.style.accentColor = '#ea4335';
+    sfxVolSlider.addEventListener('input', () => {
+        sfxAudio.volume = parseFloat(sfxVolSlider.value);
+    });
+    sfxAudio.volume = 0.8;
+
+    sfxVolWrapper.appendChild(sfxVolLabel);
+    sfxVolWrapper.appendChild(sfxVolSlider);
+    sfxHeaderRow.appendChild(sfxPadLabel);
+    sfxHeaderRow.appendChild(sfxVolWrapper);
+
+    // Flash target for Ctrl+click with no armed pad
+    sfxHeaderRow.id = '__sfxHeaderRow';
+
+    const padGrid = document.createElement('div');
+    padGrid.style.display = 'grid';
+    padGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+    padGrid.style.gap = '6px';
+
+    sfxPad.forEach((pad, i) => {
+        const btn = document.createElement('button');
+        btn.style.borderRadius = '6px';
+        btn.style.padding = '8px 4px';
+        btn.style.fontSize = '11px';
+        btn.style.fontWeight = 'bold';
+        btn.style.cursor = 'pointer';
+        btn.style.textAlign = 'center';
+        btn.style.overflow = 'hidden';
+        btn.style.textOverflow = 'ellipsis';
+        btn.style.whiteSpace = 'nowrap';
+        btn.style.transition = 'all 0.15s ease';
+        pad.btn = btn;
+        applyPadStyle(i);
+        btn.addEventListener('click', () => handlePadClick(i));
+        padGrid.appendChild(btn);
+    });
+
+    sfxPanel.appendChild(sfxHeaderRow);
+    sfxPanel.appendChild(padGrid);
+
+    sectionContent.appendChild(ambienceCard);
+    sectionContent.appendChild(sfxDivider);
+    sectionContent.appendChild(sfxPanel);
+
+    expandableSection.appendChild(sectionToggleBar);
+    expandableSection.appendChild(sectionContent);
+
+    container.appendChild(expandableSection);
     document.body.appendChild(container);
 
     // Toggle collapse function
@@ -381,6 +676,18 @@
                     slot.ui.slider.value = 0;
                     slot.ui.timeEl.innerText = `${formatTime(current)}/--:--`;
                 }
+            }
+        }
+        // Ambience scrub & time update
+        if (ambienceSlot.id && !ambienceSlot.isUserDragging && ambienceSlot.ui) {
+            const cur = ambienceSlot.audio.currentTime || 0;
+            const dur = ambienceSlot.audio.duration;
+            if (dur) {
+                ambienceSlot.ui.slider.value = (cur / dur) * 100;
+                ambienceSlot.ui.timeEl.innerText = `${formatTime(cur)}/${formatTime(dur)}`;
+            } else {
+                ambienceSlot.ui.slider.value = 0;
+                ambienceSlot.ui.timeEl.innerText = `${formatTime(cur)}/--:--`;
             }
         }
     }, 250);
@@ -523,6 +830,141 @@
         }
     }
 
+    // ── Helper: build a Google Drive stream URL from a file ID ───────────────
+    function buildStreamUrl(fileId) {
+        return `https://docs.google.com/uc?export=download&id=${fileId}`;
+    }
+
+    // ── Ambience Controls ─────────────────────────────────────────────────────
+    function handleAmbienceClick() {
+        if (!ambienceSlot.id) return;
+        if (ambienceSlot.audio.paused) {
+            ambienceSlot.audio.play();
+        } else {
+            ambienceSlot.audio.pause();
+        }
+        refreshAmbienceUI();
+    }
+
+    function refreshAmbienceUI() {
+        const ui = ambienceSlot.ui;
+        if (!ui) return;
+        if (!ambienceSlot.id) {
+            ui.card.style.background = '#fafafa';
+            ui.card.style.border = '1px dashed #dadce0';
+            ui.tag.style.color = '#70757a';
+            ui.tag.innerText = 'AMBIENCE';
+            ui.nameEl.style.color = '#70757a';
+            ui.nameEl.innerText = 'No Ambience';
+            ui.btn.innerText = 'EMPTY';
+            ui.btn.style.background = '#f1f3f4';
+            ui.btn.style.color = '#70757a';
+            ui.slider.disabled = true;
+        } else if (!ambienceSlot.audio.paused) {
+            ui.card.style.background = '#f1f3f4';
+            ui.card.style.border = '1.5px solid #34a853';
+            ui.tag.style.color = '#34a853';
+            ui.tag.innerText = 'AMBIENCE — PLAYING';
+            ui.nameEl.style.color = '#202124';
+            ui.nameEl.innerText = ambienceSlot.name;
+            ui.btn.innerText = '⏸ PAUSE';
+            ui.btn.style.background = '#34a853';
+            ui.btn.style.color = '#ffffff';
+            ui.slider.disabled = false;
+        } else {
+            ui.card.style.background = '#ffffff';
+            ui.card.style.border = '1px solid #dadce0';
+            ui.tag.style.color = '#5f6368';
+            ui.tag.innerText = 'AMBIENCE — READY';
+            ui.nameEl.style.color = '#5f6368';
+            ui.nameEl.innerText = ambienceSlot.name;
+            ui.btn.innerText = '▶ PLAY';
+            ui.btn.style.background = '#e6f4ea';
+            ui.btn.style.color = '#34a853';
+            ui.slider.disabled = false;
+        }
+    }
+
+    // ── SFX Pad Controls ──────────────────────────────────────────────────────
+    function applyPadStyle(i) {
+        const pad = sfxPad[i];
+        const btn = pad.btn;
+        if (!btn) return;
+        btn.innerText = pad.label;
+        if (i === armedPadIndex) {
+            // Armed: awaiting Drive link assignment via Ctrl+click
+            btn.style.border = '2px dashed #1a73e8';
+            btn.style.background = '#e8f0fe';
+            btn.style.color = '#1a73e8';
+        } else if (i === playingPadIndex && !sfxAudio.paused) {
+            // Currently playing
+            btn.style.border = '2px solid #ea4335';
+            btn.style.background = '#fce8e6';
+            btn.style.color = '#c5221f';
+        } else if (pad.id !== null) {
+            // Loaded / idle
+            btn.style.border = '1.5px solid #dadce0';
+            btn.style.background = '#ffffff';
+            btn.style.color = '#202124';
+        } else {
+            // Empty
+            btn.style.border = '1px dashed #dadce0';
+            btn.style.background = '#fafafa';
+            btn.style.color = '#9aa0a6';
+        }
+    }
+
+    function handlePadClick(i) {
+        const pad = sfxPad[i];
+
+        // Toggle disarm if clicking already-armed pad
+        if (armedPadIndex === i) {
+            armedPadIndex = null;
+            applyPadStyle(i);
+            return;
+        }
+
+        // Disarm any previously armed pad
+        if (armedPadIndex !== null) {
+            const prev = armedPadIndex;
+            armedPadIndex = null;
+            applyPadStyle(prev);
+        }
+
+        // If pad is empty, arm it to receive a Drive link
+        if (pad.id === null) {
+            armedPadIndex = i;
+            applyPadStyle(i);
+            return;
+        }
+
+        // Pad is loaded — play it
+        sfxAudio.pause();
+        sfxAudio.currentTime = 0;
+        sfxAudio.src = buildStreamUrl(pad.id);
+        sfxAudio.play();
+        const prevPlaying = playingPadIndex;
+        playingPadIndex = i;
+        if (prevPlaying !== null && prevPlaying !== i) applyPadStyle(prevPlaying);
+        applyPadStyle(i);
+    }
+
+    // ── SFX/Ambience section toggle ───────────────────────────────────────────
+    function toggleSfxSection() {
+        isSfxSectionExpanded = !isSfxSectionExpanded;
+        if (isSfxSectionExpanded) {
+            sectionContent.style.display = 'flex';
+            sectionLabel.innerText = '▾ Ambience & SFX';
+            sfxChevronBtn.innerText = '−';
+            sfxChevronBtn.title = 'Collapse Ambience & SFX';
+        } else {
+            sectionContent.style.display = 'none';
+            sectionLabel.innerText = '▸ Ambience & SFX';
+            sfxChevronBtn.innerText = '+';
+            sfxChevronBtn.title = 'Expand Ambience & SFX';
+        }
+    }
+
     // Click handler for Drive file link integration
     document.addEventListener('click', function(e) {
         let target = e.target;
@@ -542,16 +984,42 @@
 
         const fileId = driveMatch[1];
         const trackName = (target.innerText || "Google Drive Track").replace(/\n/g, ' ').trim();
-        const streamUrl = `https://docs.google.com/uc?export=download&id=${fileId}`;
 
-        // Auto-expand if collapsed
-        if (isCollapsed) {
-            toggleCollapse();
-        }
-
-        // Ensure panel is visible
+        // Ensure panel is visible and expanded
+        if (isCollapsed) toggleCollapse();
         container.style.display = 'flex';
 
+        // ── Alt+click → load into Ambience slot ──────────────────────────────
+        if (e.altKey) {
+            ambienceSlot.id = fileId;
+            ambienceSlot.name = trackName;
+            ambienceSlot.audio.src = buildStreamUrl(fileId);
+            ambienceSlot.audio.preload = 'auto';
+            ambienceSlot.audio.loop = true;
+            if (!isSfxSectionExpanded) toggleSfxSection();
+            ambienceSlot.audio.play();
+            refreshAmbienceUI();
+            return;
+        }
+
+        // ── Ctrl+click → assign to armed SFX pad ─────────────────────────────
+        if (e.ctrlKey) {
+            if (armedPadIndex !== null) {
+                sfxPad[armedPadIndex].id = fileId;
+                sfxPad[armedPadIndex].label = trackName.length > 14 ? trackName.slice(0, 13) + '…' : trackName;
+                const armed = armedPadIndex;
+                armedPadIndex = null;
+                applyPadStyle(armed);
+            } else {
+                // Flash the SFX pad header to signal no pad is armed
+                sfxPadLabel.style.color = '#ea4335';
+                setTimeout(() => { sfxPadLabel.style.color = '#5f6368'; }, 500);
+                if (!isSfxSectionExpanded) toggleSfxSection();
+            }
+            return;
+        }
+
+        // ── Default → A/B slot selection (unchanged logic) ───────────────────
         let targetKey = 'A';
 
         if (slots.A.id === null) {
@@ -565,8 +1033,8 @@
         const selectedSlot = slots[targetKey];
         selectedSlot.id = fileId;
         selectedSlot.name = trackName;
-        selectedSlot.audio.src = streamUrl;
-        selectedSlot.audio.preload = "auto";
+        selectedSlot.audio.src = buildStreamUrl(fileId);
+        selectedSlot.audio.preload = 'auto';
         selectedSlot.audio.loop = loopCheckbox.checked;
 
         if (activeSlotKey === null) {

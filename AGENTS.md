@@ -32,10 +32,17 @@ The script maintains two static audio tracks: **Slot A** and **Slot B**.
 ### B. Link Interception & Streaming
 
 - Listens for clicks on `<a>` tags or Google Docs Rich Links (`.docs-richlink`) containing Google Drive file paths
-- Converts standard sharing URLs to raw download streams:
+- Converts standard sharing URLs to raw download streams via `buildStreamUrl(fileId)`:
   ```
   https://docs.google.com/uc?export=download&id=FILE_ID
   ```
+- **Modifier-key routing** (checked before A/B logic):
+
+  | Modifier | Target |
+  | :--- | :--- |
+  | *(none)* | A/B slot selection — unchanged |
+  | **Alt** | Ambience slot |
+  | **Ctrl** | Armed SFX pad (if any); otherwise brief flash on SFX pad label |
 
 ### C. Linear Crossfade Engine
 
@@ -48,8 +55,25 @@ When the user triggers a track in the inactive slot while the active slot is pla
 
 ### D. Audio Controls & Behaviors
 
-- **Shared Loop:** one checkbox controls `audio.loop` for both slots simultaneously
+- **Shared Loop:** one checkbox controls `audio.loop` for both A/B slots simultaneously. Does **not** affect the Ambience slot.
 - **End-of-track reset:** when `loop = false` and a track ends, the `ended` event fires, the playhead resets to `0`, and the slot button returns to **▶ PLAY**
+
+### E. Ambience Slot
+
+- Independent looping audio slot; `audio.loop` is always `true` — not linked to the shared Loop checkbox.
+- Loaded via **Alt+click** on a Drive link in the doc.
+- Has its own volume slider (default 0.7) that directly sets `ambienceSlot.audio.volume`.
+- Play/pause handled by `handleAmbienceClick()` — never calls `handleButtonClick()` or `crossfade()`.
+- Scrub bar and time display are updated by the shared `setInterval` loop.
+
+### F. SFX Pad
+
+- 3×3 grid of 9 one-shot buttons; single shared `sfxAudio` element (`loop = false`).
+- Before playing a new SFX: `sfxAudio.pause(); sfxAudio.currentTime = 0;`
+- `sfxAudio.volume` is controlled by the SFX volume slider (default 0.8).
+- **Pre-fill:** set `id` fields in `SFX_PAD_CONFIG` (top of IIFE) to load pads at script startup without any click.
+- **Runtime assign:** click an empty pad to arm it → **Ctrl+click** a Drive link → pad receives the File ID. Clicking the armed pad again disarms it; clicking a different pad re-arms it.
+- No scrub bar — SFX are fire-and-forget.
 
 ---
 
@@ -62,12 +86,15 @@ The player is a fixed floating card pinned to the bottom-right of the viewport, 
 | **Main Panel** | Fixed 400px width, white bg, 16px rounded corners, drop shadow | Master container; hidden on load |
 | **Top Control Bar** | "Audio Controller" label, Loop checkbox, Fade Stepper, Collapse button | Persistent; always visible |
 | **Fade Stepper** | `[-]` / `[+]` buttons + number input; range strictly 0–3s, step 0.5s, default 1s | Adjusts crossfade duration |
-| **Collapse Button** | `−` / `+` toggle | Hides slot cards, shows compact play button; panel shrinks to `width: auto` |
+| **Collapse Button** | `−` / `+` toggle | Hides A/B slot cards only; panel shrinks to `width: auto` |
 | **Compact Play Button** | Visible only when collapsed | Plays/pauses the active slot without expanding the panel |
 | **Slot Cards (A & B)** | Rounded borders; background color switches based on slot state | Visualizes per-slot status |
 | **Play/Pause Button** | Pill button; states: `EMPTY`, `▶ PLAY`, `⏸ PAUSE` | Triggers playback, pause, or crossfade |
 | **Scrub Bar** | `<input type="range">`, accent color reflects active/inactive state | Manual scrubbing; real-time progress tracking |
 | **Time Display** | Monospace, format `m:ss / m:ss` | Live progress; shows `--:--` for duration until metadata loads |
+| **Ambience & SFX Section** | Appended below A/B cards; own `▾`/`▸` toggle; NOT hidden by main collapse | Contains Ambience card and SFX pad |
+| **Ambience Card** | Green accent (`#34a853`); AMBIENCE tag; volume slider (0–1, default 0.7) | Independent play/pause, scrub, time display |
+| **SFX Pad** | 3×3 CSS grid; red accent (`#ea4335`); volume slider (0–1, default 0.8) | 9 one-shot buttons; arm/assign via click + Ctrl+click |
 
 ---
 
@@ -89,6 +116,26 @@ const slots = {
 
 let activeSlotKey = null;   // 'A', 'B', or null
 let isCollapsed = false;    // Tracks collapse state of the panel
+
+// ── SFX_PAD_CONFIG — edit IDs here to pre-fill pads at script load ────────────
+const SFX_PAD_CONFIG = [
+    { id: null, label: "SFX 1" }, // ... 9 entries total
+];
+
+// Ambience slot — same shape as A/B; always loops; volume independent
+const ambienceSlot = {
+    id: null, name: "No Ambience",
+    audio: HTMLAudioElement,  // loop always true
+    isUserDragging: false,
+    ui: Object  // { card, tag, nameEl, btn, slider, timeEl }
+};
+
+// SFX layer
+const sfxAudio = HTMLAudioElement;        // single shared element, loop = false
+const sfxPad = [ { id, label, btn } ];    // 9 entries, btn filled during UI build
+let armedPadIndex = null;                 // pad waiting for a Ctrl+click Drive link
+let playingPadIndex = null;               // for reverting style on sfxAudio.ended
+let isSfxSectionExpanded = true;          // Ambience & SFX section visibility
 ```
 
 ### DOM Hierarchy
@@ -102,50 +149,67 @@ container (fixed panel)
 │       ├── fadeWrapper ([-] input [+])
 │       ├── compactPlayBtn (hidden unless collapsed)
 │       └── collapseBtn (−/+)
-└── contentArea (hidden when collapsed)
-    ├── slots.A.ui.card
-    │   ├── tag ("SLOT A")
-    │   ├── nameEl (track name)
-    │   └── row
-    │       ├── btn (EMPTY / ▶ PLAY / ⏸ PAUSE)
-    │       ├── slider (<input type="range">)
-    │       └── timeEl (m:ss / m:ss)
-    └── slots.B.ui.card
-        └── (same structure as A)
+├── contentArea (hidden when A/B collapsed)
+│   ├── slots.A.ui.card
+│   │   ├── tag ("SLOT A")
+│   │   ├── nameEl (track name)
+│   │   └── row
+│   │       ├── btn (EMPTY / ▶ PLAY / ⏸ PAUSE)
+│   │       ├── slider (<input type="range">)
+│   │       └── timeEl (m:ss / m:ss)
+│   └── slots.B.ui.card
+│       └── (same structure as A)
+└── expandableSection (NOT hidden by main collapse)
+    ├── sectionToggleBar ("▾ Ambience & SFX" + chevron)
+    └── sectionContent
+        ├── ambienceCard
+        │   ├── headerRow: "AMBIENCE" tag + volume slider
+        │   ├── nameEl
+        │   └── controlRow: btn + slider + timeEl
+        ├── divider (1px #e0e0e0)
+        └── sfxPanel
+            ├── sfxHeaderRow: "SFX PAD" label + volume slider
+            └── padGrid (CSS grid 3×3, 9 buttons)
 ```
 
 ### UI Refresh Loop
 
-The UI updates on a **shared `setInterval` timer running every 250ms**. It iterates over both slots and updates the scrub bar position and time display for any occupied, non-dragging slot.
+The UI updates on a **shared `setInterval` timer running every 250ms**. It iterates over both A/B slots **and** `ambienceSlot`, updating the scrub bar position and time display for any occupied, non-dragging slot.
 
 ### Collapse Mode
 
 `toggleCollapse()` switches `isCollapsed` and conditionally shows/hides:
-- `contentArea` (the two slot cards)
+- `contentArea` (the two A/B slot cards only)
 - `fadeWrapper` and `loopLabel`
 - `compactPlayBtn` (a minimal play/pause icon, only shown when collapsed)
 - Resizes the panel between `400px` and `auto` width
+- **Does NOT affect `expandableSection`** — the Ambience & SFX section has its own `toggleSfxSection()` toggle.
 
-### Event Flow
+### New Functions (v7.0)
+
+| Function | Purpose |
+| :--- | :--- |
+| `buildStreamUrl(fileId)` | Returns the `uc?export=download` stream URL; shared helper |
+| `handleAmbienceClick()` | Play/pause `ambienceSlot.audio`; calls `refreshAmbienceUI()` |
+| `refreshAmbienceUI()` | Updates ambience card border, tag text, button text/style |
+| `applyPadStyle(i)` | Sets SFX pad button border/color based on empty/loaded/armed/playing state |
+| `handlePadClick(i)` | Arm/disarm an empty pad, or play a loaded SFX |
+| `toggleSfxSection()` | Expand/collapse the Ambience & SFX section |
+
+### Event Flow (updated)
 
 ```
 [ User clicks Google Drive link in Doc ]
               │
               ▼
-[ Extract FILE_ID from URL ]
+[ Extract FILE_ID; build streamUrl via buildStreamUrl() ]
               │
-              ▼
-[ Build stream URL: /uc?export=download&id=FILE_ID ]
-              │
-              ▼
-[ Determine target slot (A or B) per selection rules ]
-              │
-              ▼
-[ Assign src, load metadata, update slot name & UI ]
-              │
-              ▼
-[ If first-ever track → play immediately ]
-[ If crossfade triggered → start fade interval ]
+    ┌─────────┼─────────┐
+    │ e.altKey │ e.ctrlKey │ (none)
+    ▼          ▼           ▼
+  Ambience    SFX pad    A/B slot
+  slot        (if armed)  selection
+              (else flash)
 ```
 
 ---
@@ -177,3 +241,15 @@ When starting work on this codebase, compare the script's current `@version`, `@
 - After edits, re-check `git status --short` and confirm only intended files changed
 - Stage only files relevant to the task — avoid bundling unrelated changes in a single commit
 - Documentation updates (`AGENTS.md`, `README.md`, `CHANGELOG.md`) must be included in the **same commit** as the script change they describe
+
+### 8. Ambience volume is independent
+Never set `ambienceSlot.audio.volume` from the crossfade engine or the Loop checkbox handler. The ambience volume slider is the only permitted setter.
+
+### 9. SFX pad buttons must not block music controls
+The SFX pad buttons must never set `.disabled = true` on A/B or Ambience controls.
+
+### 10. Always clear `armedPadIndex` after assignment or disarm
+`armedPadIndex` must be set to `null` after a successful Ctrl+click assignment and after any pad button disarm, to prevent phantom assignments on subsequent clicks.
+
+### 11. `toggleCollapse()` must not touch `expandableSection`
+The main `−`/`+` collapse only affects `contentArea`, `fadeWrapper`, `loopLabel`, `compactPlayBtn`, and the panel width. The Ambience & SFX `expandableSection` has its own independent `toggleSfxSection()` toggle and must never be hidden or shown by `toggleCollapse()`.

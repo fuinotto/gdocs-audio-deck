@@ -1,6 +1,6 @@
 # SFX & Ambience Expansion — Implementation Plan
 
-**Status:** Planned (not yet implemented)
+**Status:** Implemented (v7.0, 2026-07-21)
 **Target script:** `src/dual-slot-interactive-audio-player.js`
 **Planned version bump:** 6.3 → 7.0
 

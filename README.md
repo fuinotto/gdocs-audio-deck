@@ -12,6 +12,8 @@ Tampermonkey userscript that plays Google Drive audio files in Google Docs via a
 - **Shared loop toggle** — One switch controls looping for both slots
 - **Collapsible UI** — Minimize to a compact header bar when not needed
 - **Auto end-of-track reset** — Playhead resets and button returns to ▶ PLAY when a non-looping track ends
+- **Ambience slot** — Independent looping audio layer with its own volume slider; load via Alt+click on any Drive link
+- **SFX Pad** — 3×3 grid of 9 one-shot buttons; pre-fill Drive File IDs in `SFX_PAD_CONFIG` or assign at runtime via Ctrl+click
 
 ## Installation
 
@@ -26,6 +28,8 @@ Tampermonkey userscript that plays Google Drive audio files in Google Docs via a
 2. Click any Drive audio link — it loads into Slot A and starts playing immediately
 3. Click a second link to preload it into Slot B
 4. Click Slot B's **▶ PLAY** button to trigger a crossfade from A into B
+5. **Alt+click** a Drive link to load it into the **Ambience** slot (loops independently of A/B)
+6. To assign a Drive link to an **SFX pad**: click an empty pad button to arm it (blue border), then **Ctrl+click** a Drive link in the doc
 
 ## Maintainability Note
 
