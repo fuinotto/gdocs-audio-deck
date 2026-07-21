@@ -68,13 +68,15 @@ When the user triggers a track in the inactive slot while the active slot is pla
 
 ### F. SFX Pad
 
-- 3×3 grid of 9 one-shot buttons; single shared `sfxAudio` element (`loop = false`).
-- Before playing a new SFX: `sfxAudio.pause(); sfxAudio.currentTime = 0;`
-- `sfxAudio.volume` is controlled by the SFX volume slider (default 0.8).
+- 3×3 grid of 9 one-shot buttons; each pad owns its own `<audio>` element (`loop = false`). Audio is preloaded immediately when a file ID is assigned.
+- Before playing a pad: `pad.audio.currentTime = 0; pad.audio.play();` (no src swap — zero latency).
+- When a new pad is played while another is active, the previous pad’s audio is paused and reset.
+- `sfxVolume` is a shared variable controlled by the SFX volume slider (default 0.8); applied to all pad audio elements on change and on play.
 - **Pre-fill:** set `id` fields in `SFX_PAD_CONFIG` (top of IIFE) to load pads at script startup without any click.
-- **Runtime assign:** click an empty pad to arm it → **Ctrl+click** a Drive link → pad receives the File ID. Clicking the armed pad again disarms it; clicking a different pad re-arms it.
-- **Name-based auto-routing:** if a clicked Drive link's text begins with `sfx` or `[sfx]` (case-insensitive, no modifier required), it is automatically assigned to the next empty pad (or the armed pad if any). If all pads are full, the SFX pad header flashes red.
-- **Stop button (`■`)** in the SFX panel header row: immediately stops the playing SFX (`sfxAudio.pause(); sfxAudio.currentTime = 0`), clears `playingPadIndex`, and reverts the playing-pad button style.
+- **Runtime assign:** click an empty pad to arm it → **Ctrl+click** a Drive link → pad receives the File ID and its audio is preloaded via `assignSfxPad()`. Clicking the armed pad again disarms it; clicking a different pad re-arms it.
+- **Name-based auto-routing:** if a clicked Drive link’s text begins with `sfx` or `[sfx]` (case-insensitive, no modifier required), it is automatically assigned to the next empty pad (or the armed pad if any). If all pads are full, the SFX pad header flashes red.
+- **Stop button (`■`)** in the SFX panel header row: immediately stops the playing SFX (`pad.audio.pause(); pad.audio.currentTime = 0`), clears `playingPadIndex`, and reverts the playing-pad button style.
+- **Edit mode (`✎`)** in the SFX panel header row: toggles `isSfxEditMode`. In edit mode, loaded pads show a `✕` prefix and red dashed border; clicking one clears the pad (resets `id`, label, and audio src). Empty pads are dimmed. Edit mode cannot be active simultaneously with arm mode. Auto-exits when the section collapses.
 - No scrub bar — SFX are fire-and-forget.
 
 ---

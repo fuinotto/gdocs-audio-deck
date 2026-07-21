@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google Docs Dual-Slot Interactive Audio Player
 // @namespace    http://tampermonkey.net/
-// @version      7.1
-// @description  Plays Drive links in Docs using two static slots with crossfade, an independent Ambience looping slot, a 9-button SFX pad (with name-based auto-routing and stop control), and a collapsible UI.
+// @version      7.2
+// @description  Plays Drive links in Docs using two static slots with crossfade, an independent Ambience looping slot, a 9-button SFX pad (per-pad preloaded audio, name-based auto-routing, stop and edit controls), and a collapsible UI.
 // @author       You
 // @match        https://docs.google.com/document/*
 // @grant        none
@@ -10,6 +10,8 @@
 
 (function() {
     'use strict';
+
+    const version = '7.2';
 
     // Core Slot Objects
     const slots = {
@@ -43,13 +45,14 @@
         ui: null
     };
 
-    // SFX layer — single shared <audio>; only one SFX plays at a time
-    const sfxAudio = document.createElement('audio');
-    const sfxPad = SFX_PAD_CONFIG.map(cfg => ({ id: cfg.id, label: cfg.label, btn: null }));
+    // SFX layer — one <audio> element per pad for zero-latency preloading
+    const sfxPad = SFX_PAD_CONFIG.map(cfg => ({ id: cfg.id, label: cfg.label, btn: null, audio: null }));
 
+    let sfxVolume = 0.8;            // Shared volume applied to all pad audios
     let armedPadIndex = null;       // Pad button index waiting to receive a Drive link
     let playingPadIndex = null;     // Pad index currently playing (for ended-style revert)
     let isSfxSectionExpanded = true; // Whether the Ambience & SFX section is visible
+    let isSfxEditMode = false;      // Whether SFX board is in delete-mode
 
     // Configure Audio defaults & event listeners
     for (let key in slots) {
@@ -67,17 +70,22 @@
     ambienceSlot.audio.loop = true;
     document.body.appendChild(ambienceSlot.audio);
 
-    // SFX audio setup — single shared element, never loops
-    sfxAudio.loop = false;
-    document.body.appendChild(sfxAudio);
-
-    // Revert "playing" style on pad button when SFX finishes
-    sfxAudio.addEventListener('ended', () => {
-        if (playingPadIndex !== null && sfxPad[playingPadIndex].btn) {
-            applyPadStyle(playingPadIndex);
-        }
-        playingPadIndex = null;
+    // SFX per-pad audio setup — preload any pre-filled IDs from SFX_PAD_CONFIG
+    sfxPad.forEach(pad => {
+        pad.audio = createSfxAudio(pad.id);
     });
+
+    function createSfxAudio(fileId) {
+        const el = document.createElement('audio');
+        el.loop = false;
+        el.volume = sfxVolume;
+        if (fileId) {
+            el.src = buildStreamUrl(fileId);
+            el.preload = 'auto';
+        }
+        document.body.appendChild(el);
+        return el;
+    }
 
     // Main UI Panel
     const container = document.createElement('div');
@@ -110,6 +118,7 @@
     header.style.color = '#5f6368';
     header.style.textTransform = 'uppercase';
     header.innerText = "Audio Controller";
+    header.title = `Audio Controller v${version}`;
 
     // Collapse button (to minimize panel)
     const collapseBtn = document.createElement('button');
@@ -583,9 +592,10 @@
     sfxVolSlider.style.height = '4px';
     sfxVolSlider.style.accentColor = '#ea4335';
     sfxVolSlider.addEventListener('input', () => {
-        sfxAudio.volume = parseFloat(sfxVolSlider.value);
+        sfxVolume = parseFloat(sfxVolSlider.value);
+        sfxPad.forEach(pad => { if (pad.audio) pad.audio.volume = sfxVolume; });
     });
-    sfxAudio.volume = 0.8;
+    // Initial volume already set via createSfxAudio — no extra line needed
 
     sfxVolWrapper.appendChild(sfxVolLabel);
     sfxVolWrapper.appendChild(sfxVolSlider);
@@ -610,13 +620,38 @@
     sfxStopBtn.addEventListener('mouseenter', () => sfxStopBtn.style.background = '#fce8e6');
     sfxStopBtn.addEventListener('mouseleave', () => sfxStopBtn.style.background = '#f1f3f4');
     sfxStopBtn.addEventListener('click', () => {
-        sfxAudio.pause();
-        sfxAudio.currentTime = 0;
         if (playingPadIndex !== null) {
+            sfxPad[playingPadIndex].audio.pause();
+            sfxPad[playingPadIndex].audio.currentTime = 0;
             applyPadStyle(playingPadIndex);
             playingPadIndex = null;
         }
     });
+
+    // Edit mode toggle button
+    const sfxEditBtn = document.createElement('button');
+    sfxEditBtn.innerText = '✎';
+    sfxEditBtn.title = 'Edit SFX pad (click a pad to remove its sound)';
+    sfxEditBtn.style.border = '1px solid #dadce0';
+    sfxEditBtn.style.background = '#f1f3f4';
+    sfxEditBtn.style.borderRadius = '4px';
+    sfxEditBtn.style.width = '20px';
+    sfxEditBtn.style.height = '20px';
+    sfxEditBtn.style.display = 'flex';
+    sfxEditBtn.style.alignItems = 'center';
+    sfxEditBtn.style.justifyContent = 'center';
+    sfxEditBtn.style.cursor = 'pointer';
+    sfxEditBtn.style.fontSize = '11px';
+    sfxEditBtn.style.fontWeight = 'bold';
+    sfxEditBtn.style.color = '#5f6368';
+    sfxEditBtn.style.padding = '0';
+    sfxEditBtn.addEventListener('mouseenter', () => {
+        sfxEditBtn.style.background = isSfxEditMode ? '#fbbc04' : '#e8eaed';
+    });
+    sfxEditBtn.addEventListener('mouseleave', () => {
+        sfxEditBtn.style.background = isSfxEditMode ? '#fef7e0' : '#f1f3f4';
+    });
+    sfxEditBtn.addEventListener('click', toggleSfxEditMode);
 
     const sfxLabelGroup = document.createElement('div');
     sfxLabelGroup.style.display = 'flex';
@@ -624,6 +659,7 @@
     sfxLabelGroup.style.gap = '6px';
     sfxLabelGroup.appendChild(sfxPadLabel);
     sfxLabelGroup.appendChild(sfxStopBtn);
+    sfxLabelGroup.appendChild(sfxEditBtn);
     sfxHeaderRow.appendChild(sfxLabelGroup);
     sfxHeaderRow.appendChild(sfxVolWrapper);
 
@@ -648,6 +684,13 @@
         btn.style.whiteSpace = 'nowrap';
         btn.style.transition = 'all 0.15s ease';
         pad.btn = btn;
+        // Wire ended event now that btn ref exists
+        pad.audio.addEventListener('ended', () => {
+            if (playingPadIndex === i) {
+                applyPadStyle(i);
+                playingPadIndex = null;
+            }
+        });
         applyPadStyle(i);
         btn.addEventListener('click', () => handlePadClick(i));
         padGrid.appendChild(btn);
@@ -870,6 +913,17 @@
         return `https://docs.google.com/uc?export=download&id=${fileId}`;
     }
 
+    // ── Helper: assign a file to a pad and preload its audio ─────────────────
+    function assignSfxPad(i, fileId, trackName) {
+        const pad = sfxPad[i];
+        pad.id = fileId;
+        pad.label = trackName.length > 14 ? trackName.slice(0, 13) + '…' : trackName;
+        pad.audio.src = buildStreamUrl(fileId);
+        pad.audio.preload = 'auto';
+        pad.audio.volume = sfxVolume;
+        pad.audio.load();
+    }
+
     // ── Ambience Controls ─────────────────────────────────────────────────────
     function handleAmbienceClick() {
         if (!ambienceSlot.id) return;
@@ -925,32 +979,61 @@
         const pad = sfxPad[i];
         const btn = pad.btn;
         if (!btn) return;
-        btn.innerText = pad.label;
-        if (i === armedPadIndex) {
-            // Armed: awaiting Drive link assignment via Ctrl+click
-            btn.style.border = '2px dashed #1a73e8';
-            btn.style.background = '#e8f0fe';
-            btn.style.color = '#1a73e8';
-        } else if (i === playingPadIndex && !sfxAudio.paused) {
-            // Currently playing
-            btn.style.border = '2px solid #ea4335';
+        if (isSfxEditMode && pad.id !== null) {
+            // Edit mode: show delete affordance on loaded pads
+            btn.innerText = '✕ ' + pad.label;
+            btn.style.border = '2px dashed #ea4335';
             btn.style.background = '#fce8e6';
             btn.style.color = '#c5221f';
-        } else if (pad.id !== null) {
-            // Loaded / idle
-            btn.style.border = '1.5px solid #dadce0';
-            btn.style.background = '#ffffff';
-            btn.style.color = '#202124';
-        } else {
-            // Empty
+        } else if (isSfxEditMode) {
+            // Edit mode: empty pad — dim it, not interactive
+            btn.innerText = pad.label;
             btn.style.border = '1px dashed #dadce0';
             btn.style.background = '#fafafa';
-            btn.style.color = '#9aa0a6';
+            btn.style.color = '#c5c5c5';
+        } else {
+            btn.innerText = pad.label;
+            if (i === armedPadIndex) {
+                btn.style.border = '2px dashed #1a73e8';
+                btn.style.background = '#e8f0fe';
+                btn.style.color = '#1a73e8';
+            } else if (i === playingPadIndex && pad.audio && !pad.audio.paused) {
+                btn.style.border = '2px solid #ea4335';
+                btn.style.background = '#fce8e6';
+                btn.style.color = '#c5221f';
+            } else if (pad.id !== null) {
+                btn.style.border = '1.5px solid #dadce0';
+                btn.style.background = '#ffffff';
+                btn.style.color = '#202124';
+            } else {
+                btn.style.border = '1px dashed #dadce0';
+                btn.style.background = '#fafafa';
+                btn.style.color = '#9aa0a6';
+            }
         }
     }
 
     function handlePadClick(i) {
         const pad = sfxPad[i];
+
+        // Edit mode: clicking a loaded pad clears it
+        if (isSfxEditMode) {
+            if (pad.id !== null) {
+                // Stop if currently playing
+                if (playingPadIndex === i) {
+                    pad.audio.pause();
+                    pad.audio.currentTime = 0;
+                    playingPadIndex = null;
+                }
+                // Reset to empty
+                pad.audio.removeAttribute('src');
+                pad.audio.load();
+                pad.id = null;
+                pad.label = SFX_PAD_CONFIG[i].label;
+                applyPadStyle(i);
+            }
+            return;
+        }
 
         // Toggle disarm if clicking already-armed pad
         if (armedPadIndex === i) {
@@ -973,19 +1056,46 @@
             return;
         }
 
-        // Pad is loaded — play it
-        sfxAudio.pause();
-        sfxAudio.currentTime = 0;
-        sfxAudio.src = buildStreamUrl(pad.id);
-        sfxAudio.play();
-        const prevPlaying = playingPadIndex;
+        // Pad is loaded — stop any currently playing pad, then play this one
+        if (playingPadIndex !== null && playingPadIndex !== i) {
+            sfxPad[playingPadIndex].audio.pause();
+            sfxPad[playingPadIndex].audio.currentTime = 0;
+            applyPadStyle(playingPadIndex);
+        }
+        pad.audio.currentTime = 0;
+        pad.audio.volume = sfxVolume;
+        pad.audio.play();
         playingPadIndex = i;
-        if (prevPlaying !== null && prevPlaying !== i) applyPadStyle(prevPlaying);
         applyPadStyle(i);
+    }
+
+    // ── SFX edit mode toggle ──────────────────────────────────────────────────
+    function toggleSfxEditMode() {
+        isSfxEditMode = !isSfxEditMode;
+        if (isSfxEditMode) {
+            // Exit arm mode when entering edit mode
+            if (armedPadIndex !== null) {
+                const prev = armedPadIndex;
+                armedPadIndex = null;
+                applyPadStyle(prev);
+            }
+            sfxEditBtn.style.background = '#fef7e0';
+            sfxEditBtn.style.border = '1px solid #fbbc04';
+            sfxEditBtn.style.color = '#e37400';
+            sfxEditBtn.title = 'Exit edit mode';
+        } else {
+            sfxEditBtn.style.background = '#f1f3f4';
+            sfxEditBtn.style.border = '1px solid #dadce0';
+            sfxEditBtn.style.color = '#5f6368';
+            sfxEditBtn.title = 'Edit SFX pad (click a pad to remove its sound)';
+        }
+        sfxPad.forEach((_, i) => applyPadStyle(i));
     }
 
     // ── SFX/Ambience section toggle ───────────────────────────────────────────
     function toggleSfxSection() {
+        // Exit edit mode when collapsing section
+        if (isSfxEditMode && isSfxSectionExpanded) toggleSfxEditMode();
         isSfxSectionExpanded = !isSfxSectionExpanded;
         if (isSfxSectionExpanded) {
             sectionContent.style.display = 'flex';
@@ -1040,11 +1150,10 @@
         // ── Ctrl+click → assign to armed SFX pad ─────────────────────────────
         if (e.ctrlKey) {
             if (armedPadIndex !== null) {
-                sfxPad[armedPadIndex].id = fileId;
-                sfxPad[armedPadIndex].label = trackName.length > 14 ? trackName.slice(0, 13) + '…' : trackName;
-                const armed = armedPadIndex;
+                const idx = armedPadIndex;
+                assignSfxPad(idx, fileId, trackName);
                 armedPadIndex = null;
-                applyPadStyle(armed);
+                applyPadStyle(idx);
             } else {
                 // Flash the SFX pad header to signal no pad is armed
                 sfxPadLabel.style.color = '#ea4335';
@@ -1060,9 +1169,8 @@
                 ? armedPadIndex
                 : sfxPad.findIndex(p => p.id === null);
             if (targetPadIdx !== -1) {
-                sfxPad[targetPadIdx].id = fileId;
-                sfxPad[targetPadIdx].label = trackName.length > 14 ? trackName.slice(0, 13) + '…' : trackName;
                 const prevArmed = armedPadIndex;
+                assignSfxPad(targetPadIdx, fileId, trackName);
                 armedPadIndex = null;
                 applyPadStyle(targetPadIdx);
                 if (prevArmed !== null && prevArmed !== targetPadIdx) applyPadStyle(prevArmed);

@@ -8,7 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [7.1] — 2026-07-21 — Current
+## [7.2] — 2026-07-21 — Current
+
+### Added
+- **Per-pad preloaded audio** — Each SFX pad now owns its own `<audio>` element. When a file ID is assigned the audio is fetched and buffered immediately (`preload="auto"`), eliminating the src-swap lag on first play. The SFX volume slider applies to all pad audio elements simultaneously.
+- **SFX edit mode** — A `✎` pencil button in the SFX pad header row toggles edit mode (amber highlight when active). In edit mode, loaded pad buttons show a `✕` prefix and red dashed border; clicking one clears the pad (stops playback if active, removes file ID, resets label to default). Empty pads are dimmed. Edit mode exits automatically when the Ambience & SFX section is collapsed.
+- **`assignSfxPad(i, fileId, trackName)` helper** — Shared function used by Ctrl+click, name-based routing, and any future assignment path; sets the file ID, label, and preloads the pad’s own `<audio>` element.
+
+### Changed
+- `handlePadClick` no longer swaps `sfxAudio.src`; it resets the pad’s own audio to `currentTime = 0` and calls `.play()` directly.
+- Stop button (`■`) now targets `sfxPad[playingPadIndex].audio` instead of the removed shared `sfxAudio`.
+
+---
+
+## [7.1] — 2026-07-21
 
 ### Added
 - **SFX name-based auto-routing** — Clicking a Drive link whose text starts with `sfx` or `[sfx]` (case-insensitive, no modifier key needed) automatically assigns it to the next empty SFX pad (or the currently armed pad). Expands the Ambience & SFX section if collapsed. If all pads are full, flashes the SFX pad header in red.
