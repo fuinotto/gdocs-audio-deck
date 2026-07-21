@@ -8,7 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [7.2] — 2026-07-21 — Current
+## [7.3] — 2026-07-21 — Current
+
+### Added
+- **Ambience name-based auto-routing** — Clicking a Drive link whose text starts with `ambience`, `[ambience]`, or `[amb]` (case-insensitive, no modifier key needed) automatically loads it into the Ambience slot and starts playback. Expands the Ambience & SFX section if collapsed.
+
+---
+
+## [7.2] — 2026-07-21
 
 ### Added
 - **Per-pad preloaded audio** — Each SFX pad now owns its own `<audio>` element. When a file ID is assigned the audio is fetched and buffered immediately (`preload="auto"`), eliminating the src-swap lag on first play. The SFX volume slider applies to all pad audio elements simultaneously.

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google Docs Dual-Slot Interactive Audio Player
 // @namespace    http://tampermonkey.net/
-// @version      7.2
-// @description  Plays Drive links in Docs using two static slots with crossfade, an independent Ambience looping slot, a 9-button SFX pad (per-pad preloaded audio, name-based auto-routing, stop and edit controls), and a collapsible UI.
+// @version      0.7.3
+// @description  Plays Drive links in Docs using two static slots with crossfade, an independent Ambience looping slot (with name-based auto-routing), a 9-button SFX pad (per-pad preloaded audio, name-based auto-routing, stop and edit controls), and a collapsible UI.
 // @author       You
 // @match        https://docs.google.com/document/*
 // @grant        none
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const version = '7.2';
+    const version = '0.7.3';
 
     // Core Slot Objects
     const slots = {
@@ -244,13 +244,13 @@
         btn.style.border = '1px solid #dadce0';
         btn.style.background = '#f1f3f4';
         btn.style.borderRadius = '4px';
-        btn.style.width = '20px';
-        btn.style.height = '20px';
+        btn.style.width = '24px';
+        btn.style.height = '24px';
         btn.style.display = 'flex';
         btn.style.alignItems = 'center';
         btn.style.justifyContent = 'center';
         btn.style.cursor = 'pointer';
-        btn.style.fontSize = '12px';
+        btn.style.fontSize = '14px';
         btn.style.fontWeight = 'bold';
         btn.style.color = '#5f6368';
         btn.style.padding = '0';
@@ -722,7 +722,7 @@
             container.style.padding = '12px';
             collapseBtn.innerText = '+';
             collapseBtn.title = 'Expand player';
-            header.originalInnerText = header.innerText;
+            header._originalInnerText = header.innerText;
             header.innerText = '';
         } else {
             // Show content & fade controls, hide compact play button
@@ -734,7 +734,7 @@
             container.style.padding = '16px';
             collapseBtn.innerText = '−';
             collapseBtn.title = 'Minimize player';
-            header.innerText = header.originalInnerText ?? header.innerText;
+            header.innerText = header._originalInnerText ?? header.innerText;
         }
     }
 
@@ -1099,12 +1099,13 @@
         isSfxSectionExpanded = !isSfxSectionExpanded;
         if (isSfxSectionExpanded) {
             sectionContent.style.display = 'flex';
-            sectionLabel.innerText = '▾ Ambience & SFX';
+            sectionLabel.innerText = sectionLabel._originalInnerText ?? sectionLabel.innerText;
             sfxChevronBtn.innerText = '−';
             sfxChevronBtn.title = 'Collapse Ambience & SFX';
         } else {
             sectionContent.style.display = 'none';
-            sectionLabel.innerText = '▸ Ambience & SFX';
+            sectionLabel._originalInnerText = sectionLabel.innerText;
+            sectionLabel.innerText = '';
             sfxChevronBtn.innerText = '+';
             sfxChevronBtn.title = 'Expand Ambience & SFX';
         }
@@ -1180,6 +1181,19 @@
                 setTimeout(() => { sfxPadLabel.style.color = '#5f6368'; }, 500);
             }
             if (!isSfxSectionExpanded) toggleSfxSection();
+            return;
+        }
+
+        // ── Name-based Ambience auto-route (starts with "ambience", "[ambience]", or "[amb]") ──
+        if (/^(\[ambience\]|\[amb\]|ambience)/i.test(trackName)) {
+            ambienceSlot.id = fileId;
+            ambienceSlot.name = trackName;
+            ambienceSlot.audio.src = buildStreamUrl(fileId);
+            ambienceSlot.audio.preload = 'auto';
+            ambienceSlot.audio.loop = true;
+            if (!isSfxSectionExpanded) toggleSfxSection();
+            ambienceSlot.audio.play();
+            refreshAmbienceUI();
             return;
         }
 

@@ -40,9 +40,16 @@ The script maintains two static audio tracks: **Slot A** and **Slot B**.
 
   | Modifier | Target |
   | :--- | :--- |
-  | *(none)* | A/B slot selection — unchanged (unless name-based SFX routing triggers; see Section 2F) |
+  | *(none)* | A/B slot selection — unchanged (unless name-based SFX or Ambience routing triggers; see Sections 2E–2F) |
   | **Alt** | Ambience slot |
   | **Ctrl** | Armed SFX pad (if any); otherwise brief flash on SFX pad label |
+
+  **Name-based routing (no modifier)** fires before A/B logic:
+
+  | Link text prefix (case-insensitive) | Target |
+  | :--- | :--- |
+  | `sfx`, `[sfx]` | Next empty SFX pad (or armed pad) |
+  | `ambience`, `[ambience]`, `[amb]` | Ambience slot |
 
 ### C. Linear Crossfade Engine
 
